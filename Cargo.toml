@@ -1,0 +1,9 @@
+[package]
+name = "Meridian"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+dotenv = "0.15.0"
+riven = "2.75.0"
+tokio = { version = "1.49.0", features = ["rt-multi-thread"] }
