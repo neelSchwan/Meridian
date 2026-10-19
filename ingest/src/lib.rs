@@ -8,6 +8,9 @@ mod convert;
 mod notes;
 mod riot;
 
+/// The error type of ingestion, which mixes Riot, HTTP, database and parsing failures.
+type BoxError = Box<dyn std::error::Error>;
+
 pub use convert::to_record;
 pub use notes::{fetch_patch_notes, import_notes};
 pub use riot::{Sampling, Summary, ingest_matches};

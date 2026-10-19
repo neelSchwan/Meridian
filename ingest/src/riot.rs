@@ -5,9 +5,8 @@ use riven::consts::{Division, PlatformRoute, Queue, QueueType};
 use riven::reqwest::StatusCode;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::BoxError;
 use crate::convert::to_record;
-
-type BoxError = Box<dyn std::error::Error>;
 
 /// Which players to start from and how far back to look.
 ///
@@ -51,7 +50,7 @@ pub async fn ingest_matches(
 ) -> Result<Summary, BoxError> {
     let region = sampling.route.to_string().to_lowercase();
     let regional = sampling.route.to_regional();
-    let since = unix_now() - sampling.since_days * 24 * 60 * 60;
+    let since = unix_now()? - sampling.since_days * 24 * 60 * 60;
     let mut summary = Summary::default();
 
     let players = find_players(api, sampling).await?;
@@ -108,7 +107,8 @@ pub async fn ingest_matches(
     Ok(summary)
 }
 
-/// The encrypted ids of up to `max_players` ranked solo players in the sampled tier.
+/// The PUUIDs of up to `max_players` ranked solo players in the sampled tier. Riot returns Master
+/// and above unordered, so a cap there picks an arbitrary subset.
 async fn find_players(api: &RiotApi, sampling: &Sampling) -> Result<Vec<String>, BoxError> {
     let queue = QueueType::RANKED_SOLO_5x5;
     let tier = sampling.tier.as_str().parse()?;
@@ -125,6 +125,7 @@ async fn find_players(api: &RiotApi, sampling: &Sampling) -> Result<Vec<String>,
                     .get_grandmaster_league(sampling.route, queue)
                     .await?
             }
+            // The tier is apex, so only Challenger is left.
             _ => {
                 api.league_v4()
                     .get_challenger_league(sampling.route, queue)
@@ -171,8 +172,7 @@ fn note_failure(error: &riven::RiotApiError) -> Result<(), BoxError> {
     Ok(())
 }
 
-fn unix_now() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |elapsed| elapsed.as_secs() as i64)
+fn unix_now() -> Result<i64, BoxError> {
+    let elapsed = SystemTime::now().duration_since(UNIX_EPOCH)?;
+    Ok(elapsed.as_secs() as i64)
 }

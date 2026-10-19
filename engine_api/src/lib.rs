@@ -33,9 +33,9 @@ pub use schema::SCHEMA_VERSION;
 /// Opens (or creates) the database at `path` and brings its schema up to date.
 pub fn open_db(path: impl AsRef<Path>) -> Result<Connection> {
     let conn = Connection::open(path)?;
+    conn.busy_timeout(std::time::Duration::from_secs(5))?;
     // WAL lets the server read while an ingestion run is writing.
     conn.query_row("PRAGMA journal_mode = WAL", [], |_| Ok(()))?;
-    conn.busy_timeout(std::time::Duration::from_secs(5))?;
     conn.execute_batch("PRAGMA foreign_keys = ON;")?;
     init_db(&conn)?;
     Ok(conn)
@@ -70,7 +70,8 @@ pub fn has_match(conn: &Connection, match_id: &str) -> Result<bool> {
     )?)
 }
 
-/// Stores a match with its participants and bans in one transaction.
+/// Stores a match with its participants and bans in one transaction. The region is stored in
+/// lower case, which is how filters compare it.
 /// Returns `false`, changing nothing, when the match was already stored.
 pub fn record_match(conn: &Connection, record: &MatchRecord) -> Result<bool> {
     record.validate()?;
@@ -85,7 +86,7 @@ pub fn record_match(conn: &Connection, record: &MatchRecord) -> Result<bool> {
         (
             &record.match_id,
             patch_id,
-            &record.region,
+            record.region.to_lowercase(),
             record.tier.as_str(),
             record.started_at,
             record.duration_secs,

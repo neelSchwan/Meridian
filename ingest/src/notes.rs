@@ -2,7 +2,7 @@ use core_types::Patch;
 use engine_api::{Connection, replace_balance_changes};
 use patch_notes::parse_patch_notes;
 
-type BoxError = Box<dyn std::error::Error>;
+use crate::BoxError;
 
 const NOTES_URL: &str = "https://www.leagueoflegends.com/en-us/news/game-updates";
 
@@ -15,7 +15,7 @@ pub async fn fetch_patch_notes(patch: Patch) -> Result<String, BoxError> {
         format!("{NOTES_URL}/league-of-legends-patch-{label}-notes/"),
     ];
     for address in &addresses {
-        let response = reqwest::get(address).await?;
+        let response = riven::reqwest::get(address).await?;
         if response.status().is_success() {
             return Ok(response.text().await?);
         }

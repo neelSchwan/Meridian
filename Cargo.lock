@@ -856,7 +856,6 @@ dependencies = [
  "dotenv",
  "engine_api",
  "patch_notes",
- "reqwest",
  "riven",
  "serde_json",
  "tokio",

@@ -294,6 +294,12 @@ pub fn render_shifts(shifts: &[MetaShift]) -> String {
     out
 }
 
+/// Reminds readers how far the effectiveness counts can be trusted.
+const EFFECTIVENESS_CAVEAT: &str = "\nOnly comparisons with enough games on both sides count. These are associations, not proof\n\
+that changes caused the movement. Each champion is tested separately, so some significant\n\
+results are chance. Champions are usually changed when their win rate is extreme, and extreme\n\
+win rates drift back toward 50% anyway, which flatters both \"as intended\" and \"toward 50%\".\n";
+
 /// Renders how often buffs and nerfs moved win rates as intended.
 pub fn render_effectiveness(rows: &[Effectiveness]) -> String {
     let mut out = String::from("kind  measured  as intended  significantly  toward 50%\n");
@@ -308,6 +314,7 @@ pub fn render_effectiveness(rows: &[Effectiveness]) -> String {
             row.toward_even,
         );
     }
+    out.push_str(EFFECTIVENESS_CAVEAT);
     out
 }
 

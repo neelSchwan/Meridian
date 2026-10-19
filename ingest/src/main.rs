@@ -42,12 +42,12 @@ enum Commands {
         #[arg(long, default_value = "I", value_parser = parse_upper::<Division>)]
         division: Division,
         /// Pages of players to read (200 per page below Master)
-        #[arg(long, default_value_t = 1)]
+        #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(i32).range(1..))]
         pages: i32,
         #[arg(long, default_value_t = 50)]
         players: usize,
         /// Recent matches to list per player (at most 100)
-        #[arg(long, default_value_t = 20)]
+        #[arg(long, default_value_t = 20, value_parser = clap::value_parser!(i32).range(1..=100))]
         matches_per_player: i32,
         /// Ignore matches older than this many days
         #[arg(long, default_value_t = 14)]

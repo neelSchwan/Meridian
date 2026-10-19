@@ -267,7 +267,7 @@ async function metaView(view) {
     [["Kind"], ["Measured", true], ["As intended", true], ["Significantly", true], ["Toward 50%", true]],
     effectiveness.map((e) => [e.kind, String(e.measured), `${e.in_intended_direction}`, `${e.significantly_in_intended_direction}`, `${e.toward_even}`]),
   ));
-  view.append(el("p", { class: "note" }, "A buff is as intended when the win rate rose, a nerf when it fell. Each count is one champion in one patch."));
+  view.append(el("p", { class: "note" }, "A buff is as intended when the win rate rose, a nerf when it fell; each count is one champion in one patch, and only comparisons with 30+ games on both sides count. These are associations, not proof of cause. Each champion is tested separately, so some significant results are chance, and champions are usually changed when their win rate is extreme, which drifts back toward 50% anyway."));
 }
 
 function shiftChart(shifts) {

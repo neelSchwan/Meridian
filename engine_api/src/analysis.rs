@@ -46,10 +46,10 @@ pub fn patch_report(conn: &Connection, patch: Patch, filter: &Filter) -> Result<
         .iter()
         .position(|&candidate| candidate == patch)
         .ok_or(EngineError::PatchNotFound(patch))?;
-    let previous = *position
+    let previous_index = position
         .checked_sub(1)
-        .map(|index| &patches[index])
         .ok_or(EngineError::NoPreviousPatch(patch))?;
+    let previous = patches[previous_index];
     let after = champion_stats(conn, patch, filter)?;
     let before = champion_stats(conn, previous, filter)?;
     let changes = balance_changes(conn, patch)?;

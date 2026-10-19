@@ -28,7 +28,7 @@ Don't add a crate unless it is clearly necessary.
 - Remove dependencies that are no longer used. CI runs clippy, but it does not catch unused crates,
   so check `Cargo.toml` when you remove code.
 - Current dependencies, for reference: `serde` (domain types); `rusqlite` (storage); `scraper`
-  (reading patch-note HTML); `clap` (CLIs); `riven`, `tokio`, `reqwest`, `dotenv` (talking to Riot
+  (reading patch-note HTML); `clap` (CLIs); `riven` (which brings `reqwest`), `tokio`, `dotenv` (talking to Riot
   and loading the API key); `tiny_http`, `serde_json` (HTTP server and JSON output).
 
 ## 3. Comments

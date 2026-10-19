@@ -90,18 +90,22 @@ pub struct Impact {
     /// Empty for champions Riot did not touch, whose movement the changes cannot explain.
     pub changes: Vec<BalanceChange>,
     pub kind: Option<ChangeKind>,
-    /// For a buff, whether the win rate rose; for a nerf, whether it fell.
+    /// For a buff, whether the win rate rose; for a nerf, whether it fell. `None` unless both
+    /// patches have enough games to test, so a handful of games cannot count as evidence.
     pub moved_as_intended: Option<bool>,
-    /// Whether the win rate ended up closer to 50% than it started.
+    /// Whether the win rate ended up closer to 50% than it started. `None` when not testable.
     pub moved_toward_even: Option<bool>,
 }
 
 impl Impact {
     fn new(before: ChampionStats, after: ChampionStats, changes: Vec<BalanceChange>) -> Impact {
+        let test = two_proportion_test(before.wins, before.games, after.wins, after.games);
         let rates = before.win_rate().zip(after.win_rate());
         let win_rate_delta = rates.map(|(old, new)| new - old);
+        // Direction claims need a testable sample; the raw delta is still reported without one.
+        let testable_delta = win_rate_delta.filter(|_| test.is_some());
         let kind = overall_kind(changes.iter().map(|change| change.kind));
-        let moved_as_intended = match (kind, win_rate_delta) {
+        let moved_as_intended = match (kind, testable_delta) {
             (Some(ChangeKind::Buff), Some(delta)) => Some(delta > 0.0),
             (Some(ChangeKind::Nerf), Some(delta)) => Some(delta < 0.0),
             _ => None,
@@ -111,10 +115,12 @@ impl Impact {
             win_rate_delta,
             pick_rate_delta: after.pick_rate() - before.pick_rate(),
             ban_rate_delta: after.ban_rate() - before.ban_rate(),
-            test: two_proportion_test(before.wins, before.games, after.wins, after.games),
+            test,
             kind,
             moved_as_intended,
-            moved_toward_even: rates.map(|(old, new)| (new - 0.5).abs() < (old - 0.5).abs()),
+            moved_toward_even: rates
+                .filter(|_| test.is_some())
+                .map(|(old, new)| (new - 0.5).abs() < (old - 0.5).abs()),
             before,
             after,
             changes,
@@ -216,7 +222,7 @@ pub fn meta_shift(
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Effectiveness {
     pub kind: ChangeKind,
-    /// Champion-patches with this kind of change and a measurable win-rate change.
+    /// Champion-patches with this kind of change and enough games on both sides to test.
     pub measured: u64,
     pub in_intended_direction: u64,
     /// Of those, how many moved by more than noise would explain.
@@ -233,7 +239,7 @@ pub fn effectiveness(all: &[Impact]) -> Vec<Effectiveness> {
         .map(|kind| {
             let measured: Vec<&Impact> = all
                 .iter()
-                .filter(|impact| impact.kind == Some(kind) && impact.win_rate_delta.is_some())
+                .filter(|impact| impact.kind == Some(kind) && impact.test.is_some())
                 .collect();
             let count = |keep: &dyn Fn(&&Impact) -> bool| {
                 measured.iter().filter(|impact| keep(impact)).count() as u64
@@ -436,6 +442,16 @@ mod tests {
         assert!(all[0].win_rate_delta.is_some());
         assert!(all[0].test.is_none());
         assert!(!all[0].significant());
+    }
+
+    #[test]
+    fn a_buff_seen_in_a_handful_of_games_is_not_evidence() {
+        let before = [stats("Rare", 1, 0)];
+        let after = [stats("Rare", 3, 3)];
+        let all = impacts(&before, &after, &[change("Rare", ChangeKind::Buff)]);
+
+        assert_eq!(all[0].moved_as_intended, None);
+        assert_eq!(effectiveness(&all)[0].measured, 0);
     }
 
     #[test]
