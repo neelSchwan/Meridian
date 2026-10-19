@@ -1,7 +1,3 @@
-
-
 [workspace]
-members = [
-    "seeding",
-]
-resolver = "2"
+members = ["core_types"]
+resolver = "3"
