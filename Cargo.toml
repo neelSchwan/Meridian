@@ -1,3 +1,3 @@
 [workspace]
-members = ["core_types"]
+members = ["core_types", "patch_notes"]
 resolver = "3"
