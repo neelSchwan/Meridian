@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Meridian</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    --bg: #f7f7f5; --panel: #ffffff; --text: #1d1d1b; --muted: #6b6b66; --line: #e2e2dc;
+    --accent: #2f6fdf; --good: #1f8a4c; --bad: #c43d3d; --band: #2f6fdf33;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #161615; --panel: #1f1f1d; --text: #ecece8; --muted: #9a9a93; --line: #34342f;
+      --accent: #6c9cf0; --good: #4cc27f; --bad: #e06c6c; --band: #6c9cf033;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.5 system-ui, sans-serif; background: var(--bg); color: var(--text); }
+  header { padding: 12px 20px; border-bottom: 1px solid var(--line); font-weight: 600; }
+  main { max-width: 1100px; margin: 0 auto; padding: 16px 20px 48px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; margin-bottom: 16px; }
+  label { display: flex; flex-direction: column; font-size: 12px; color: var(--muted); gap: 2px; }
+  button, input, select {
+    font: inherit; color: inherit; background: var(--panel);
+    border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px;
+  }
+  button { cursor: pointer; }
+  nav { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 16px; }
+  nav button { border: none; border-bottom: 2px solid transparent; border-radius: 0; background: none; }
+  nav button[aria-selected="true"] { border-bottom-color: var(--accent); font-weight: 600; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .tile { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; }
+  .tile .label { font-size: 12px; color: var(--muted); }
+  .tile .value { font-size: 22px; font-weight: 600; }
+  table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); margin-bottom: 20px; }
+  th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+  th { font-size: 12px; color: var(--muted); font-weight: 600; }
+  td.num, th.num { text-align: right; }
+  .table-wrap { overflow-x: auto; }
+  h2 { font-size: 17px; margin: 20px 0 8px; }
+  .good { color: var(--good); } .bad { color: var(--bad); } .muted { color: var(--muted); }
+  .note { color: var(--muted); font-size: 13px; max-width: 70ch; }
+  .link { background: none; border: none; padding: 0; color: var(--accent); text-decoration: underline; }
+  #error { color: var(--bad); margin-bottom: 12px; }
+  svg { width: 100%; height: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+  svg text { fill: var(--muted); font-size: 11px; }
+  svg .grid { stroke: var(--line); }
+  svg .even { stroke: var(--muted); stroke-dasharray: 4 3; }
+  svg .series { stroke: var(--accent); fill: none; stroke-width: 2; }
+  svg .trend { stroke: var(--text); fill: none; stroke-width: 1.5; stroke-dasharray: 2 3; }
+  svg .whisker { stroke: var(--accent); stroke-width: 1.5; }
+  svg .dot { fill: var(--accent); }
+  svg .bar { fill: var(--accent); }
+  svg .buff { fill: var(--good); } svg .nerf { fill: var(--bad); } svg .adjustment { fill: var(--muted); }
+</style>
+</head>
+<body>
+<header>Meridian &middot; patch impact analysis</header>
+<main>
+  <div class="controls">
+    <label>Patch <select id="patch"></select></label>
+    <label>Region <input id="region" size="6" placeholder="all"></label>
+    <label>Tier
+      <select id="tier"><option value="">all</option></select>
+    </label>
+    <label>Role
+      <select id="role"><option value="">all</option></select>
+    </label>
+    <label>Champion <input id="champion" size="14" placeholder="e.g. Ahri"></label>
+    <button id="apply">Apply</button>
+  </div>
+  <div id="error" role="alert"></div>
+  <nav role="tablist" id="tabs"></nav>
+  <section id="view"></section>
+</main>
+<script>
+"use strict";
+const TIERS = ["IRON", "BRONZE", "SILVER", "GOLD", "PLATINUM", "EMERALD", "DIAMOND", "MASTER", "GRANDMASTER", "CHALLENGER"];
+const ROLES = ["top", "jungle", "middle", "bottom", "support"];
+const $ = (id) => document.getElementById(id);
+const SVG = "http://www.w3.org/2000/svg";
+
+// All text goes through textContent, so nothing from the API can inject markup.
+function el(tag, attrs = {}, text = "", namespace = null) {
+  const node = namespace ? document.createElementNS(namespace, tag) : document.createElement(tag);
+  for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, value);
+  if (text !== "") node.textContent = text;
+  return node;
+}
+const svg = (tag, attrs = {}, text = "") => el(tag, attrs, text, SVG);
+
+const pct = (rate) => (rate == null ? "n/a" : (rate * 100).toFixed(1) + "%");
+const pp = (delta) => (delta == null ? "n/a" : (delta >= 0 ? "+" : "") + (delta * 100).toFixed(1) + "pp");
+const pvalue = (test) => (!test ? "n/a" : test.p_value < 0.001 ? "<0.001" : test.p_value.toFixed(3));
+
+function query() {
+  const params = new URLSearchParams();
+  for (const id of ["region", "tier", "role"]) if ($(id).value.trim()) params.set(id, $(id).value.trim());
+  const text = params.toString();
+  return text ? "?" + text : "";
+}
+
+async function api(path) {
+  const response = await fetch(path);
+  const body = await response.json();
+  if (!response.ok) throw new Error(body.error);
+  return body;
+}
+
+function verdict(impact) {
+  if (!impact.test) return impact.win_rate_delta == null ? "not played in both patches" : "too few games to test";
+  if (impact.test.p_value >= 0.05) return "within noise";
+  if (impact.moved_as_intended === true) return "moved as intended";
+  if (impact.moved_as_intended === false) return "moved against intent";
+  return "significant change";
+}
+
+function table(headers, rows) {
+  const head = el("tr");
+  headers.forEach(([name, numeric]) => head.append(el("th", numeric ? { class: "num" } : {}, name)));
+  const body = el("tbody");
+  for (const row of rows) {
+    const tr = el("tr");
+    row.forEach((cell, index) => {
+      const td = el("td", headers[index][1] ? { class: "num" } : {});
+      if (cell instanceof Node) td.append(cell); else td.textContent = cell;
+      tr.append(td);
+    });
+    body.append(tr);
+  }
+  const thead = el("thead");
+  thead.append(head);
+  const grid = el("table");
+  grid.append(thead, body);
+  const wrap = el("div", { class: "table-wrap" });
+  wrap.append(grid);
+  return wrap;
+}
+
+function championLink(name) {
+  const button = el("button", { class: "link" }, name);
+  button.onclick = () => { $("champion").value = name; show("history"); };
+  return button;
+}
+
+function tile(label, value, className = "") {
+  const node = el("div", { class: "tile" });
+  node.append(el("div", { class: "label" }, label), el("div", { class: "value " + className }, value));
+  return node;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Views
+// ---------------------------------------------------------------------------------------------
+
+async function reportView(view) {
+  const patch = $("patch").value;
+  if (!patch) { view.append(el("p", {}, "No patches stored yet. Run meridian-ingest first.")); return; }
+  const report = await api(`/api/patches/${encodeURIComponent(patch)}/report${query()}`);
+  const tiles = el("div", { class: "tiles" });
+  const mover = (m) => (m ? `${m.champion} ${pp(m.win_rate_delta)}` : "none");
+  tiles.append(
+    tile("Champions changed", String(report.champions_changed)),
+    tile("Largest gain", mover(report.largest_gain), "good"),
+    tile("Largest drop", mover(report.largest_drop), "bad"),
+    tile("Meta shift (mean win-rate move)", pp(report.meta_shift.mean_abs_win_rate_delta).replace("+", "")),
+  );
+  view.append(tiles);
+  view.append(el("p", { class: "note" },
+    `Patch ${report.patch} compared with ${report.previous}: ${report.matches_before} matches before, ${report.matches_after} after.`));
+
+  const columns = [["Champion"], ["Win rate", true], ["Change", true], ["95% CI", true], ["p", true], ["Pick rate", true], ["Result"]];
+  const withChangesColumn = [columns[0], ["Changes"], ...columns.slice(1)];
+  const row = (impact) => [
+    championLink(impact.champion),
+    `${pct(impact.before.win_rate)} to ${pct(impact.after.win_rate)}`,
+    pp(impact.win_rate_delta),
+    impact.test ? `${pp(impact.test.ci_low)} to ${pp(impact.test.ci_high)}` : "n/a",
+    pvalue(impact.test),
+    `${pct(impact.before.pick_rate)} to ${pct(impact.after.pick_rate)}`,
+    verdict(impact),
+  ];
+  const changedRow = (impact) => {
+    const cells = row(impact);
+    cells.splice(1, 0, `${impact.kind || ""} (${impact.changes.length})`);
+    return cells;
+  };
+  const changed = report.impacts.filter((impact) => impact.changes.length > 0);
+  view.append(el("h2", {}, "Champions Riot changed"));
+  view.append(changed.length ? table(withChangesColumn, changed.map(changedRow)) : el("p", { class: "muted" }, "No balance changes are stored for this patch. Run meridian-ingest notes."));
+
+  const unexplained = report.impacts.filter((i) => i.changes.length === 0 && i.test && i.test.p_value < 0.05).slice(0, 10);
+  if (unexplained.length) {
+    view.append(el("h2", {}, "Significant movers Riot did not change"));
+    view.append(table(columns, unexplained.map(row)));
+  }
+  view.append(el("p", { class: "note" }, "Win-rate changes are associations, not proof that a change caused them: other champions, items and the player population also shift between patches."));
+  const csv = el("a", { href: `/api/patches/${encodeURIComponent(patch)}/report.csv${query()}`, download: `meridian-${patch}.csv` }, "Download CSV");
+  view.append(csv);
+}
+
+async function historyView(view) {
+  const name = $("champion").value.trim();
+  if (!name) { view.append(el("p", {}, "Enter a champion name above.")); return; }
+  const points = await api(`/api/champions/${encodeURIComponent(name)}/history${query()}`);
+  if (!points.length) { view.append(el("p", {}, "This champion has no games in the selected data.")); return; }
+  view.append(el("h2", {}, `${name}: win rate by patch`));
+  view.append(historyChart(points));
+  view.append(el("p", { class: "note" }, "Dots are win rates with 95% intervals, the dashed line averages the latest three patches, and triangles mark patches where Riot changed the champion (up for a buff, down for a nerf)."));
+  view.append(table(
+    [["Patch"], ["Games", true], ["Win rate", true], ["Trend", true], ["Pick rate", true], ["Ban rate", true], ["Changes"]],
+    points.map((p) => [p.patch, String(p.stats.games), pct(p.stats.win_rate), pct(p.smoothed_win_rate), pct(p.stats.pick_rate), pct(p.stats.ban_rate),
+      p.changes.map((c) => `${c.ability}: ${c.attribute} ${c.old_value} to ${c.new_value}`).join("; ")]),
+  ));
+}
+
+function historyChart(points) {
+  const width = 900, height = 320, left = 48, right = 16, top = 16, bottom = 40;
+  const lows = points.map((p) => p.stats.win_rate_low), highs = points.map((p) => p.stats.win_rate_high);
+  const min = Math.min(0.5, ...lows) - 0.01, max = Math.max(0.5, ...highs) + 0.01;
+  const x = (i) => left + (points.length === 1 ? (width - left - right) / 2 : (i * (width - left - right)) / (points.length - 1));
+  const y = (rate) => top + ((max - rate) * (height - top - bottom)) / (max - min);
+  const chart = svg("svg", { viewBox: `0 0 ${width} ${height}`, role: "img", "aria-label": "Win rate by patch" });
+  for (let tick = Math.ceil(min * 50) / 50; tick <= max; tick += 0.02) {
+    chart.append(svg("line", { class: tick === 0.5 ? "even" : "grid", x1: left, x2: width - right, y1: y(tick), y2: y(tick) }));
+    chart.append(svg("text", { x: left - 6, y: y(tick) + 4, "text-anchor": "end" }, pct(tick)));
+  }
+  const line = (key) => points.map((p, i) => `${i ? "L" : "M"}${x(i)},${y(key(p))}`).join(" ");
+  chart.append(svg("path", { class: "series", d: line((p) => p.stats.win_rate) }));
+  chart.append(svg("path", { class: "trend", d: line((p) => p.smoothed_win_rate) }));
+  points.forEach((p, i) => {
+    chart.append(svg("line", { class: "whisker", x1: x(i), x2: x(i), y1: y(p.stats.win_rate_low), y2: y(p.stats.win_rate_high) }));
+    const dot = svg("circle", { class: "dot", cx: x(i), cy: y(p.stats.win_rate), r: 3.5 });
+    dot.append(svg("title", {}, `${p.patch}: ${pct(p.stats.win_rate)} over ${p.stats.games} games`));
+    chart.append(dot);
+    if (i % Math.ceil(points.length / 14) === 0) chart.append(svg("text", { x: x(i), y: height - 22, "text-anchor": "middle" }, p.patch));
+    const kinds = new Set(p.changes.map((c) => c.kind));
+    const kind = kinds.has("buff") && !kinds.has("nerf") ? "buff" : kinds.has("nerf") && !kinds.has("buff") ? "nerf" : "adjustment";
+    if (p.changes.length) {
+      const base = height - 8, size = 6, up = kind !== "nerf";
+      chart.append(svg("path", { class: kind, d: up ? `M${x(i)},${base - size} l${size},${size * 1.6} h${-2 * size} z` : `M${x(i)},${base + size * 0.6} l${size},${-size * 1.6} h${-2 * size} z` }));
+    }
+  });
+  return chart;
+}
+
+async function rankingsView(view) {
+  const patch = $("patch").value;
+  if (!patch) { view.append(el("p", {}, "No patches stored yet.")); return; }
+  const ranked = await api(`/api/patches/${encodeURIComponent(patch)}/rankings${query()}`);
+  view.append(el("h2", {}, `Patch ${patch} by win rate`));
+  view.append(el("p", { class: "note" }, "Champions with fewer than 30 games are left out."));
+  view.append(table(
+    [["#", true], ["Champion"], ["Games", true], ["Win rate", true], ["95% CI", true], ["Pick rate", true], ["Ban rate", true]],
+    ranked.map((s, i) => [String(i + 1), championLink(s.champion), String(s.games), pct(s.win_rate), `${pct(s.win_rate_low)} to ${pct(s.win_rate_high)}`, pct(s.pick_rate), pct(s.ban_rate)]),
+  ));
+}
+
+async function metaView(view) {
+  const [shifts, effectiveness] = await Promise.all([api(`/api/meta/shifts${query()}`), api(`/api/meta/effectiveness${query()}`)]);
+  view.append(el("h2", {}, "Which patches moved the meta most"));
+  if (shifts.length) view.append(shiftChart(shifts)); else view.append(el("p", {}, "At least two patches with matches are needed."));
+  view.append(el("h2", {}, "Do buffs and nerfs work as intended?"));
+  view.append(table(
+    [["Kind"], ["Measured", true], ["As intended", true], ["Significantly", true], ["Toward 50%", true]],
+    effectiveness.map((e) => [e.kind, String(e.measured), `${e.in_intended_direction}`, `${e.significantly_in_intended_direction}`, `${e.toward_even}`]),
+  ));
+  view.append(el("p", { class: "note" }, "A buff is as intended when the win rate rose, a nerf when it fell; each count is one champion in one patch, and only comparisons with 30+ games on both sides count. These are associations, not proof of cause. Each champion is tested separately, so some significant results are chance, and champions are usually changed when their win rate is extreme, which drifts back toward 50% anyway."));
+}
+
+function shiftChart(shifts) {
+  const width = 900, height = 260, left = 48, right = 16, top = 16, bottom = 40;
+  const max = Math.max(...shifts.map((s) => s.mean_abs_win_rate_delta)) * 1.15 || 0.01;
+  const slot = (width - left - right) / shifts.length, barWidth = Math.min(40, slot * 0.7);
+  const chart = svg("svg", { viewBox: `0 0 ${width} ${height}`, role: "img", "aria-label": "Mean win-rate move per patch" });
+  const y = (value) => top + ((max - value) * (height - top - bottom)) / max;
+  chart.append(svg("line", { class: "grid", x1: left, x2: width - right, y1: y(0), y2: y(0) }));
+  chart.append(svg("text", { x: left - 6, y: y(max) + 4, "text-anchor": "end" }, pp(max).replace("+", "")));
+  shifts.forEach((shift, i) => {
+    const cx = left + slot * (i + 0.5), value = shift.mean_abs_win_rate_delta;
+    const bar = svg("rect", { class: "bar", x: cx - barWidth / 2, y: y(value), width: barWidth, height: y(0) - y(value) });
+    bar.append(svg("title", {}, `${shift.patch}: win rates moved ${pp(value).replace("+", "")} on average across ${shift.champions_compared} champions`));
+    chart.append(bar);
+    if (i % Math.ceil(shifts.length / 14) === 0) chart.append(svg("text", { x: cx, y: height - 22, "text-anchor": "middle" }, shift.patch));
+  });
+  return chart;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Page
+// ---------------------------------------------------------------------------------------------
+
+const VIEWS = { report: ["Patch report", reportView], history: ["Champion history", historyView], rankings: ["Rankings", rankingsView], meta: ["Meta", metaView] };
+let current = "report";
+
+async function show(name) {
+  current = name;
+  $("error").textContent = "";
+  for (const button of $("tabs").children) button.setAttribute("aria-selected", String(button.dataset.view === name));
+  const view = $("view");
+  view.replaceChildren();
+  try {
+    await VIEWS[name][1](view);
+  } catch (e) {
+    $("error").textContent = e.message;
+  }
+}
+
+async function start() {
+  for (const [name, [title]] of Object.entries(VIEWS)) {
+    const button = el("button", { role: "tab", "data-view": name }, title);
+    button.onclick = () => show(name);
+    $("tabs").append(button);
+  }
+  for (const tier of TIERS) $("tier").append(el("option", { value: tier }, tier));
+  for (const role of ROLES) $("role").append(el("option", { value: role }, role));
+  $("apply").onclick = () => show(current);
+  try {
+    const patches = await api("/api/patches");
+    for (const p of patches.filter((p) => p.matches > 0).reverse()) $("patch").append(el("option", { value: p.patch }, `${p.patch} (${p.matches} matches)`));
+  } catch (e) {
+    $("error").textContent = e.message;
+  }
+  show("report");
+}
+start();
+</script>
+</body>
+</html>

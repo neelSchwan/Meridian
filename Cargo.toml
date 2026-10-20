@@ -1,7 +1,3 @@
-
-
 [workspace]
-members = [
-    "seeding",
-]
-resolver = "2"
+members = ["core_types", "patch_notes", "engine_api", "ingest", "meridian-server"]
+resolver = "3"

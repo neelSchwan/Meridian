@@ -1,2 +1,5 @@
 /target
 .env
+meridian.db
+meridian.db-wal
+meridian.db-shm

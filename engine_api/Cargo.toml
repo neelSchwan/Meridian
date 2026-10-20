@@ -1,0 +1,15 @@
+[package]
+name = "engine_api"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "meridian"
+path = "src/main.rs"
+
+[dependencies]
+rusqlite = { version = "0.38.0", features = ["bundled"] }
+core_types = { path = "../core_types" }
+clap = { version = "4.5.60", features = ["derive", "env"] }
+serde = "1.0.228"
+serde_json = "1"

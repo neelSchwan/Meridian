@@ -1,0 +1,20 @@
+[package]
+name = "ingest"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "meridian-ingest"
+path = "src/main.rs"
+
+[dependencies]
+core_types = { path = "../core_types" }
+engine_api = { path = "../engine_api" }
+patch_notes = { path = "../patch_notes" }
+clap = { version = "4.5.60", features = ["derive", "env"] }
+dotenv = "0.15.0"
+riven = "2.75.0"
+tokio = { version = "1.49.0", features = ["rt-multi-thread", "macros"] }
+
+[dev-dependencies]
+serde_json = "1"
