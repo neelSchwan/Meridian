@@ -1,11 +1,19 @@
 //! Serves the Meridian HTTP API and dashboard. Configure with MERIDIAN_DB (database path,
-//! default `meridian.db`) and MERIDIAN_ADDR (listen address, default `127.0.0.1:7979`).
+//! default `meridian.db`), MERIDIAN_ADDR (listen address, default `127.0.0.1:7979`) and
+//! MERIDIAN_HOSTS (comma-separated host names to serve besides localhost, default none).
 
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
     let db = std::env::var("MERIDIAN_DB").unwrap_or_else(|_| "meridian.db".to_string());
     let addr = std::env::var("MERIDIAN_ADDR").unwrap_or_else(|_| "127.0.0.1:7979".to_string());
+    let extra_hosts: Vec<String> = std::env::var("MERIDIAN_HOSTS")
+        .unwrap_or_default()
+        .split(',')
+        .map(str::trim)
+        .filter(|host| !host.is_empty())
+        .map(str::to_string)
+        .collect();
 
     let conn = match engine_api::open_db(&db) {
         Ok(conn) => conn,
@@ -28,6 +36,7 @@ fn main() -> ExitCode {
     for request in server.incoming_requests() {
         let response = meridian_server::handle(
             &conn,
+            &extra_hosts,
             &meridian_server::Request {
                 method: request.method().as_str(),
                 url: request.url(),

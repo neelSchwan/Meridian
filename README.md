@@ -107,7 +107,9 @@ Both ingestion commands are idempotent, so scheduling them is plain cron:
 ### HTTP API
 
 `meridian-server` is read-only, listens on `127.0.0.1:7979` (set `MERIDIAN_ADDR`) and only answers
-requests addressed to localhost. Routes are documented at the top of
+requests addressed to localhost, plus any host names listed in `MERIDIAN_HOSTS` (comma-separated,
+for example `meridian.example.com,100.64.0.1`) when it is served on a private network or behind a
+tunnel. Routes are documented at the top of
 [`meridian-server/src/lib.rs`](meridian-server/src/lib.rs); for example
 `GET /api/patches/16.2/report?tier=DIAMOND` and `GET /api/champions/Jinx/history`.
 

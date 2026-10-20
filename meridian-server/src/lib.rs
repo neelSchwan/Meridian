@@ -18,8 +18,9 @@
 //!
 //! `{patch}` is a game version such as `16.2`. Errors are returned as `{"error": "message"}`.
 //!
-//! The server has no authentication and is meant for local use. Requests must name a local
-//! `Host`, which stops web pages from reading the data through DNS rebinding.
+//! The server has no authentication and is meant for local use or a private network. Requests
+//! must name a local `Host` or one of the extra host names it was started with, which stops web
+//! pages from reading the data through DNS rebinding.
 //!
 //! `GET /` serves the dashboard, a single static page (`ui/index.html`) that uses these routes.
 
@@ -96,24 +97,31 @@ impl From<core_types::DomainError> for ApiError {
     }
 }
 
-/// True for `localhost`, `127.0.0.1` and `[::1]`, with or without a port.
-fn is_local_host(host: &str) -> bool {
+/// True for `localhost`, `127.0.0.1`, `[::1]` and any name in `extra_hosts`, with or without a
+/// port. Names are compared without regard to case, as DNS does.
+fn is_allowed_host(host: &str, extra_hosts: &[String]) -> bool {
     let name = match host.rsplit_once(':') {
         Some((name, port)) if !name.is_empty() && port.parse::<u16>().is_ok() => name,
         _ => host,
     };
     matches!(name, "localhost" | "127.0.0.1" | "[::1]")
+        || extra_hosts.iter().any(|extra| extra.eq_ignore_ascii_case(name))
 }
 
 /// The dashboard, compiled into the binary so the server is a single file.
 const UI: &str = include_str!("../ui/index.html");
 
-/// Handles one request.
-pub fn handle(conn: &Connection, request: &Request) -> Response {
-    if !request.host.is_some_and(is_local_host) {
+/// Handles one request. `extra_hosts` are host names served besides localhost, such as the
+/// server's address on a private network.
+pub fn handle(conn: &Connection, extra_hosts: &[String], request: &Request) -> Response {
+    if !request
+        .host
+        .is_some_and(|host| is_allowed_host(host, extra_hosts))
+    {
         return Response::error(
             403,
-            "meridian-server only accepts requests to localhost".to_string(),
+            "meridian-server only accepts requests to localhost or a host listed in MERIDIAN_HOSTS"
+                .to_string(),
         );
     }
     if request.method != "GET" {

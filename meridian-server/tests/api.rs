@@ -51,7 +51,7 @@ fn get_from(
     method: &str,
     url: &str,
 ) -> (u16, String, String) {
-    let response = handle(conn, &Request { method, url, host });
+    let response = handle(conn, &[], &Request { method, url, host });
     (
         response.status,
         response.content_type.to_string(),
@@ -88,6 +88,26 @@ fn only_local_hosts_are_served() {
             "{host}"
         );
     }
+}
+
+#[test]
+fn listed_extra_hosts_are_served_and_others_are_not() {
+    let conn = seeded_db();
+    let extra_hosts = ["meridian.example.com".to_string(), "100.64.0.1".to_string()];
+    let status = |host: &str| {
+        let request = Request {
+            method: "GET",
+            url: "/api/patches",
+            host: Some(host),
+        };
+        handle(&conn, &extra_hosts, &request).status
+    };
+    assert_eq!(status("meridian.example.com"), 200);
+    assert_eq!(status("Meridian.Example.com:443"), 200);
+    assert_eq!(status("100.64.0.1:7979"), 200);
+    assert_eq!(status("localhost"), 200);
+    assert_eq!(status("evil.example.com"), 403);
+    assert_eq!(status("meridian.example.com.evil.com"), 403);
 }
 
 #[test]
