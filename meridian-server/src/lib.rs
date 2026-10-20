@@ -105,7 +105,9 @@ fn is_allowed_host(host: &str, extra_hosts: &[String]) -> bool {
         _ => host,
     };
     matches!(name, "localhost" | "127.0.0.1" | "[::1]")
-        || extra_hosts.iter().any(|extra| extra.eq_ignore_ascii_case(name))
+        || extra_hosts
+            .iter()
+            .any(|extra| extra.eq_ignore_ascii_case(name))
 }
 
 /// The dashboard, compiled into the binary so the server is a single file.
