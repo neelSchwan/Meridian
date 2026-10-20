@@ -1,0 +1,27 @@
+# The dashboard listens on localhost only; publish it elsewhere with `tailscale serve` or a
+# tunnel, and list the public host names in MERIDIAN_HOSTS.
+services:
+  server:
+    build: .
+    image: meridian
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:7979:7979"
+    environment:
+      MERIDIAN_HOSTS: ${MERIDIAN_HOSTS:-}
+    volumes:
+      - data:/data
+
+  # Run on demand, e.g. `docker compose run --rm ingest matches --region na1`.
+  ingest:
+    image: meridian
+    profiles: [tools]
+    entrypoint: ["meridian-ingest"]
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - data:/data
+
+volumes:
+  data:
